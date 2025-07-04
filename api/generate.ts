@@ -4,24 +4,33 @@ import { loadCachedShayaris } from "../eknazariyaScraper";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
+let shayariCache: any[] = [];
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Only POST requests allowed" });
-  }
-
-  const { mood = "", theme = "", depth = 5 } = req.body;
-
   try {
-    console.log("🔄 (Re)Loading shayari cache...");
-    const shayariCache = await loadCachedShayaris();
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Only POST requests are allowed." });
+    }
 
+    const { mood = "", theme = "", depth = 5 } = req.body || {};
+
+    // Cold start safe cache load
+    if (shayariCache.length === 0) {
+      console.log("🔄 Preloading Shayari from blog...");
+      shayariCache = await loadCachedShayaris();
+      console.log(`✅ Cached ${shayariCache.length} Shayaris`);
+    }
+
+    // Try matching from blog cache
     const matches = shayariCache.filter(
-      (s) => s.mood.includes(mood) && s.theme.includes(theme)
+      (s) =>
+        s.mood.toLowerCase().includes(mood.toLowerCase()) &&
+        s.theme.toLowerCase().includes(theme.toLowerCase())
     );
 
     if (matches.length > 0) {
-      const lines = matches[Math.floor(Math.random() * matches.length)].lines;
-      return res.status(200).json({ lines, source: "eknazariya.com" });
+      const match = matches[Math.floor(Math.random() * matches.length)];
+      return res.status(200).json({ lines: match.lines, source: "eknazariya.com" });
     }
 
     // Fallback to OpenAI
@@ -32,25 +41,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
-        {
-          role: "system",
-          content: "तुम एक भावुक उर्दू-हिंदी शायर हो। केवल शायरी दो।",
-        },
+        { role: "system", content: "तुम एक भावुक उर्दू-हिंदी शायर हो। केवल शायरी दो।" },
         { role: "user", content: prompt },
       ],
     });
 
-    const text = result.choices[0].message.content || "";
-    const lines = text
+    const content = result.choices?.[0]?.message?.content || "";
+    const lines = content
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+      .filter(Boolean);
 
     return res.status(200).json({ lines, source: "OpenAI" });
   } catch (err: any) {
-    console.error("❌ API error", err);
-    return res
-      .status(500)
-      .json({ error: err.message || "शायरी बनाने में समस्या हुई।" });
+    console.error("❌ API Error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 }
