@@ -13,25 +13,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { mood = "", theme = "", depth = 5 } = req.body;
 
-  // Cold start cache
+  // Cold start load cache
   if (shayariCache.length === 0) {
     try {
       console.log("🔄 Preloading shayari from eknazariya...");
       shayariCache = await loadCachedShayaris();
       console.log(`✅ Cached ${shayariCache.length} shayaris`);
+      console.log("📦 Example cache entry:", shayariCache[0]);
     } catch (err) {
       console.error("❌ Failed to load shayari cache", err);
     }
   }
 
-  // Normalize utility
-  const normalize = (str: string) => str.toLowerCase().trim();
+  const normalize = (str: string) => str?.toLowerCase()?.trim();
 
-  // Try to find match in cache
-  const matches = shayariCache.filter((s) => {
-    const moodMatch = normalize(s.mood).includes(normalize(mood));
-    const themeMatch = normalize(s.theme).includes(normalize(theme));
-    return moodMatch && themeMatch;
+  // Match logic — supports both string or { lines } or { mood, theme, lines }
+  const matches = shayariCache.filter((entry) => {
+    let text = "";
+
+    if (typeof entry === "string") {
+      text = entry;
+    } else if (Array.isArray(entry.lines)) {
+      text = entry.lines.join(" ");
+    } else if (typeof entry.lines === "string") {
+      text = entry.lines;
+    }
+
+    return normalize(text).includes(normalize(mood)) &&
+           normalize(text).includes(normalize(theme));
   });
 
   console.log("🔍 Matching for:", mood, theme);
@@ -39,7 +48,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log("🔎 Matched from cache:", matches.length);
 
   if (matches.length > 0) {
-    const lines = matches[Math.floor(Math.random() * matches.length)].lines;
+    const match = matches[Math.floor(Math.random() * matches.length)];
+    const lines = Array.isArray(match.lines)
+      ? match.lines
+      : typeof match === "string"
+      ? match.split("\n").map((line) => line.trim()).filter(Boolean)
+      : [];
+
     return res.status(200).json({ lines, source: "eknazariya.com" });
   }
 
