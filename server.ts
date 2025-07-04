@@ -20,7 +20,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "dist")));
 app.use("/assets", express.static(path.join(__dirname, "public/assets")));
 
-// 1. Blog URLs to preload
 const sourceUrls: string[] = [
   "https://eknazariya.com/",
   "https://eknazariya.com/ishq-shayari",
@@ -41,7 +40,6 @@ const sourceUrls: string[] = [
 
 let cachedShayaris: string[] = [];
 
-// 2. Extract Shayari blocks (3–10+ lines)
 function extractShayariBlocks(rawText: string): string[] {
   return rawText
     .split(/[-]{5,}|\n{2,}|\r\n{2,}/)
@@ -49,7 +47,6 @@ function extractShayariBlocks(rawText: string): string[] {
     .filter((s) => s.split("\n").length >= 3 && s.length >= 40);
 }
 
-// 3. Scraper logic for each page
 async function scrapeShayarisFromUrl(url: string): Promise<string[]> {
   try {
     const res = await fetch(url);
@@ -80,7 +77,7 @@ async function scrapeShayarisFromUrl(url: string): Promise<string[]> {
   }
 }
 
-// 4. Preload all blogs on server start
+// Load Shayari from all pages at server start
 (async () => {
   console.log("🔄 Preloading Shayari from eknazariya...");
   const all = await Promise.all(sourceUrls.map(scrapeShayarisFromUrl));
@@ -88,7 +85,7 @@ async function scrapeShayarisFromUrl(url: string): Promise<string[]> {
   console.log(`✅ Cached ${cachedShayaris.length} Shayaris from blog.`);
 })();
 
-// 5. Live fallback scraper
+// Fallback live search if not found in cache
 async function searchEknazariyaLive(mood: string, theme: string): Promise<string | null> {
   const query = `${mood} ${theme}`.trim();
   const url = `https://eknazariya.com/?s=${encodeURIComponent(query)}`;
@@ -111,7 +108,7 @@ async function searchEknazariyaLive(mood: string, theme: string): Promise<string
   return null;
 }
 
-// 6. API handler
+// API handler
 app.post("/api/generate", async (req, res) => {
   const { mood, theme, depth } = req.body;
   console.log(`📩 API called with mood: ${mood}, theme: ${theme}, depth: ${depth}`);
