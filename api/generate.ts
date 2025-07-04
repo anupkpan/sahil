@@ -24,18 +24,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // Lab-style full text matching logic
-  const matches = shayariCache.filter((entry) => {
-    const lines = Array.isArray(entry.lines)
-      ? entry.lines.join(" ")
-      : typeof entry === "string"
-      ? entry
-      : "";
+  // Improved fuzzy token-based matching logic
+  const normalize = (str: string) =>
+    str.toLowerCase().replace(/[.,\-–—!]/g, "").trim();
 
-    const fullText = lines.toLowerCase();
-    return (
-      fullText.includes(mood.toLowerCase()) &&
-      fullText.includes(theme.toLowerCase())
+  const tokens = (str: string) =>
+    normalize(str).split(/\s+/).filter((w) => w.length > 1);
+
+  const inputTokens = [...tokens(mood), ...tokens(theme)];
+
+  const matches = shayariCache.filter((entry) => {
+    const joined = Array.isArray(entry.lines) ? entry.lines.join(" ") : "";
+    const haystack = tokens(joined);
+    return inputTokens.every((token) =>
+      haystack.some((word) => word.includes(token))
     );
   });
 
