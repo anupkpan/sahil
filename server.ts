@@ -114,6 +114,7 @@ app.post("/api/generate", async (req, res) => {
   console.log(`📩 API called with mood: ${mood}, theme: ${theme}, depth: ${depth}`);
 
   try {
+    // Try cache match
     const bothMatch = cachedShayaris.find(
       (s) => s.includes(mood) && s.includes(theme)
     );
@@ -122,12 +123,14 @@ app.post("/api/generate", async (req, res) => {
       return res.json({ response: bothMatch, source: "eknazariya" });
     }
 
+    // Try live search
     const liveResult = await searchEknazariyaLive(mood, theme);
     if (liveResult) {
       console.log("🔍 Found via live scrape");
       return res.json({ response: liveResult, source: "eknazariya" });
     }
 
+    // Fallback to OpenAI
     const messages = [
       { role: "system", content: "You are a poetic Hindi Shayari writer." },
       { role: "user", content: `Write a Shayari about ${mood} and ${theme} with depth ${depth}/10.` }

@@ -30,8 +30,8 @@ export default function App() {
       }
 
       const data = await response.json();
-      setShayari(data.lines.join("\n")); // ✅ Fix: Use `lines` from API
-      setSource(data.source || "");
+      setShayari(data.response);              // ✅ backend sends plain string
+      setSource(data.source || "");           // ✅ backend sends "eknazariya" or "openai"
     } catch (err: any) {
       console.error("Error generating Shayari:", err);
       setError(err.message || "शायरी बनाने में कोई समस्या हुई।");
@@ -69,12 +69,16 @@ export default function App() {
             isLoading={isLoading}
           />
 
-          <ShayariDisplay shayari={shayari} isLoading={isLoading} source={source} />
+          <ShayariDisplay
+            shayari={shayari}
+            isLoading={isLoading}
+            source={source}
+          />
         </div>
       </main>
 
       {/* FOOTER */}
-      <footer>
+      <footer className="text-center text-sm text-gray-500 py-4">
         &copy; {new Date().getFullYear()} Sahil - जज़्बातों की आवाज़. All rights reserved.
       </footer>
     </div>
