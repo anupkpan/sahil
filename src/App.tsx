@@ -1,4 +1,3 @@
-// src/App.tsx
 import React, { useState, useCallback } from "react";
 import PromptControls from "./components/PromptControls";
 import ShayariDisplay from "./components/ShayariDisplay";
@@ -31,7 +30,7 @@ export default function App() {
       }
 
       const data = await response.json();
-      setShayari(data.response);
+      setShayari(data.lines.join("\n")); // ✅ Fix: Use `lines` from API
       setSource(data.source || "");
     } catch (err: any) {
       console.error("Error generating Shayari:", err);
