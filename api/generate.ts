@@ -1,7 +1,6 @@
-// api/generate.ts
 import { VercelRequest, VercelResponse } from "@vercel/node";
 import { OpenAI } from "openai";
-import { loadCachedShayaris } from "../lib/eknazariyaScraper";
+import { loadCachedShayaris } from "../lib/eknazariyaScraper.mjs"; // NOTE .mjs here!
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
@@ -14,7 +13,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { mood = "", theme = "", depth = 5 } = req.body;
 
-  // Load cache only once on cold start
   if (shayariCache.length === 0) {
     try {
       console.log("🔄 Preloading shayari from eknazariya...");
@@ -25,11 +23,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // Try matching from cache
   const matches = shayariCache.filter(
-    (s) =>
-      s.mood.includes(mood) &&
-      s.theme.includes(theme)
+    (s) => s.mood.includes(mood) && s.theme.includes(theme)
   );
 
   if (matches.length > 0) {
@@ -37,7 +32,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ lines, source: "eknazariya.com" });
   }
 
-  // If no match, fallback to OpenAI
   const prompt = `एक ${mood || "भावुक"} और ${theme || "प्रेम"} विषय पर आधारित ${
     depth > 7 ? "गहरी" : "सरल"
   } हिंदी शायरी बताओ।`;
