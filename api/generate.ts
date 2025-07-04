@@ -1,6 +1,6 @@
 import { VercelRequest, VercelResponse } from "@vercel/node";
 import { OpenAI } from "openai";
-import { loadCachedShayaris } from "../lib/eknazariyaScraper"; // NOTE .mjs here!
+import { loadCachedShayaris } from "./lib/eknazariyaScraper.js";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
