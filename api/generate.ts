@@ -3,7 +3,6 @@ import { OpenAI } from "openai";
 import { loadCachedShayaris } from "./lib/eknazariyaScraper.js";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-
 let shayariCache: any[] = [];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -13,33 +12,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { mood = "", theme = "", depth = 5 } = req.body;
 
-  // Cold start preload
-  if (shayariCache.length === 0) {
-    try {
+  try {
+    if (shayariCache.length === 0) {
       console.log("🔄 Preloading shayari from eknazariya...");
       shayariCache = await loadCachedShayaris();
       console.log(`✅ Cached ${shayariCache.length} shayaris`);
-    } catch (err) {
-      console.error("❌ Failed to load shayari cache", err);
     }
-  }
 
-  // Try match
-  const matches = shayariCache.filter(
-    (s) => s.mood.includes(mood) && s.theme.includes(theme)
-  );
+    const matches = shayariCache.filter(
+      (s) =>
+        s.mood?.includes(mood) &&
+        s.theme?.includes(theme)
+    );
 
-  if (matches.length > 0) {
-    const lines = matches[Math.floor(Math.random() * matches.length)].lines;
-    return res.status(200).json({ lines, source: "eknazariya.com" });
-  }
+    if (matches.length > 0) {
+      const selected = matches[Math.floor(Math.random() * matches.length)];
+      return res.status(200).json({
+        lines: selected.lines,
+        source: "eknazariya.com",
+      });
+    }
 
-  // Fallback OpenAI
-  const prompt = `एक ${mood || "भावुक"} और ${theme || "प्रेम"} विषय पर आधारित ${
-    depth > 7 ? "गहरी" : "सरल"
-  } हिंदी शायरी बताओ।`;
+    // fallback: OpenAI
+    const prompt = `एक ${mood || "भावुक"} और ${theme || "प्रेम"} विषय पर आधारित ${depth > 7 ? "गहरी" : "सरल"} हिंदी शायरी बताओ।`;
 
-  try {
     const result = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -48,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ],
     });
 
-    const text = result.choices[0].message.content || "";
+    const text = result.choices[0]?.message?.content || "";
     const lines = text
       .split("\n")
       .map((line) => line.trim())
@@ -56,7 +52,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ lines, source: "OpenAI" });
   } catch (err: any) {
-    console.error("❌ OpenAI error", err);
-    return res.status(500).json({ error: err.message || "Failed to generate shayari." });
+    console.error("❌ Final fallback error", err);
+    return res.status(500).json({
+      error: err.message || "Failed to generate shayari.",
+    });
   }
 }
