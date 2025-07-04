@@ -1,88 +1,60 @@
-import express from "express";
-import dotenv from "dotenv";
-import cors from "cors";
-import { OpenAI } from "openai";
-import { scrapeShayarisFromBlog } from "./src/eknazariyaScraper";
-
-dotenv.config();
-
-const app = express();
-const port = process.env.PORT || 3000;
-
-app.use(cors());
-app.use(express.json());
+import { VercelRequest, VercelResponse } from '@vercel/node';
+import { OpenAI } from 'openai';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-let cachedShayaris: {
-  text: string;
-  mood?: string;
-  theme?: string;
-}[] = [];
+let cachedShayaris: { text: string; mood?: string; theme?: string }[] = [];
 
-console.log("🔄 Preloading Shayari from eknazariya...");
-(async () => {
-  try {
-    cachedShayaris = await scrapeShayarisFromBlog();
-    console.log(`✅ Cached ${cachedShayaris.length} Shayaris from blog.`);
-  } catch (err) {
-    console.error("❌ Failed to preload shayaris:", err);
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Only POST requests allowed' });
   }
-})();
 
-app.post("/api/generate", async (req, res) => {
   const { mood, theme, depth } = req.body;
-  console.log(`📩 API called with mood: ${mood}, theme: ${theme}, depth: ${depth}`);
 
-  // Scrape on-demand if cache is empty (Vercel-safe)
+  // ⏳ Scrape only if cache is empty
   if (cachedShayaris.length === 0) {
-    console.log("⏳ Scraping shayaris on first request...");
+    console.log('⏳ Running scraper inside handler...');
+    const { scrapeShayarisFromBlog } = await import('../src/eknazariyaScraper');
     try {
       cachedShayaris = await scrapeShayarisFromBlog();
-      console.log(`✅ Scraped and cached ${cachedShayaris.length} shayaris`);
-    } catch (e) {
-      console.error("❌ Scraper failed:", e);
+      console.log(`✅ Scraped ${cachedShayaris.length} shayaris`);
+    } catch (err) {
+      console.error('❌ Scraping failed:', err);
     }
   }
 
-  // Try to match from cache
   const match = cachedShayaris.find(
     (s) =>
-      (s.mood || "").includes(mood) &&
-      (s.theme || "").includes(theme)
+      (s.mood || '').includes(mood) &&
+      (s.theme || '').includes(theme)
   );
 
   if (match) {
-    console.log("📦 Matched from cache (mood + theme)");
-    return res.json({ response: match.text, source: "eknazariya" });
+    console.log(`📦 Returning shayari from cache`);
+    return res.status(200).json({ response: match.text, source: 'eknazariya' });
   }
 
-  // Fallback to OpenAI
-  const prompt = `एक ${mood || "भावुक"} और ${theme || "प्रेम"} विषय पर आधारित ${
-    depth > 7 ? "गहरी" : "सरल"
+  const prompt = `एक ${mood || 'भावुक'} और ${theme || 'प्रेम'} विषय पर आधारित ${
+    depth > 7 ? 'गहरी' : 'सरल'
   } हिंदी शायरी बताओ।`;
 
   try {
     const result = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: 'gpt-4o',
       messages: [
-        { role: "system", content: "तुम एक भावुक उर्दू-हिंदी शायर हो। केवल शायरी दो।" },
-        { role: "user", content: prompt },
+        { role: 'system', content: 'तुम एक भावुक उर्दू-हिंदी शायर हो। केवल शायरी दो।' },
+        { role: 'user', content: prompt },
       ],
     });
 
-    const text = result.choices[0].message.content || "";
+    const text = result.choices[0].message.content || '';
 
-    return res.json({
+    return res.status(200).json({
       response: text.trim(),
-      source: "openai",
+      source: 'openai',
     });
   } catch (err: any) {
-    console.error("❌ OpenAI error:", err.message);
-    return res.status(500).json({ error: "OpenAI failed", response: "", source: "none" });
+    return res.status(500).json({ error: 'OpenAI error', source: 'none' });
   }
-});
-
-app.listen(port, () => {
-  console.log(`🚀 Server ready at http://localhost:${port}`);
-});
+}
