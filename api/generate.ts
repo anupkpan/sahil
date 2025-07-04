@@ -19,26 +19,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log("🔄 Preloading shayari from eknazariya...");
       shayariCache = await loadCachedShayaris();
       console.log(`✅ Cached ${shayariCache.length} shayaris`);
+      console.log("📦 Example cache entry:", shayariCache[0]);
     } catch (err) {
       console.error("❌ Failed to load shayari cache", err);
     }
   }
 
-  // Improved fuzzy token-based matching logic
-  const normalize = (str: string) =>
-    str.toLowerCase().replace(/[.,\-–—!]/g, "").trim();
-
-  const tokens = (str: string) =>
-    normalize(str).split(/\s+/).filter((w) => w.length > 1);
-
-  const inputTokens = [...tokens(mood), ...tokens(theme)];
+  // Normalize and tokenize mood + theme
+  const tokens = (mood + " " + theme).toLowerCase().split(/\s+/).filter(Boolean);
 
   const matches = shayariCache.filter((entry) => {
-    const joined = Array.isArray(entry.lines) ? entry.lines.join(" ") : "";
-    const haystack = tokens(joined);
-    return inputTokens.every((token) =>
-      haystack.some((word) => word.includes(token))
-    );
+    const lines = Array.isArray(entry.lines)
+      ? entry.lines.join(" ")
+      : typeof entry === "string"
+      ? entry
+      : "";
+
+    const fullText = lines.toLowerCase();
+    return tokens.every(token => fullText.includes(token));
   });
 
   console.log("🔍 Matching for:", mood, theme);
