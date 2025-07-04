@@ -30,8 +30,13 @@ export default function App() {
       }
 
       const data = await response.json();
-      setShayari(data.response);              // ✅ backend sends plain string
-      setSource(data.source || "");           // ✅ backend sends "eknazariya" or "openai"
+
+      if (typeof data.response !== "string") {
+        throw new Error("Invalid response format from API");
+      }
+
+      setShayari(data.response);
+      setSource(data.source || "");
     } catch (err: any) {
       console.error("Error generating Shayari:", err);
       setError(err.message || "शायरी बनाने में कोई समस्या हुई।");
