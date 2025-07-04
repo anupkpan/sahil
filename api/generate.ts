@@ -13,34 +13,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { mood = "", theme = "", depth = 5 } = req.body;
 
-  // Cold start load cache
+  // Cold start cache
   if (shayariCache.length === 0) {
     try {
       console.log("🔄 Preloading shayari from eknazariya...");
       shayariCache = await loadCachedShayaris();
       console.log(`✅ Cached ${shayariCache.length} shayaris`);
-      console.log("📦 Example cache entry:", shayariCache[0]);
     } catch (err) {
       console.error("❌ Failed to load shayari cache", err);
     }
   }
 
-  const normalize = (str: string) => str?.toLowerCase()?.trim();
-
-  // Match logic — supports both string or { lines } or { mood, theme, lines }
+  // Lab-style full text matching logic
   const matches = shayariCache.filter((entry) => {
-    let text = "";
+    const lines = Array.isArray(entry.lines)
+      ? entry.lines.join(" ")
+      : typeof entry === "string"
+      ? entry
+      : "";
 
-    if (typeof entry === "string") {
-      text = entry;
-    } else if (Array.isArray(entry.lines)) {
-      text = entry.lines.join(" ");
-    } else if (typeof entry.lines === "string") {
-      text = entry.lines;
-    }
-
-    return normalize(text).includes(normalize(mood)) &&
-           normalize(text).includes(normalize(theme));
+    const fullText = lines.toLowerCase();
+    return (
+      fullText.includes(mood.toLowerCase()) &&
+      fullText.includes(theme.toLowerCase())
+    );
   });
 
   console.log("🔍 Matching for:", mood, theme);
@@ -48,13 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log("🔎 Matched from cache:", matches.length);
 
   if (matches.length > 0) {
-    const match = matches[Math.floor(Math.random() * matches.length)];
-    const lines = Array.isArray(match.lines)
-      ? match.lines
-      : typeof match === "string"
-      ? match.split("\n").map((line) => line.trim()).filter(Boolean)
-      : [];
-
+    const lines = matches[Math.floor(Math.random() * matches.length)].lines;
     return res.status(200).json({ lines, source: "eknazariya.com" });
   }
 
