@@ -1,8 +1,9 @@
 import { VercelRequest, VercelResponse } from "@vercel/node";
 import { OpenAI } from "openai";
-import { loadCachedShayaris } from "./lib/eknazariyaScraper.js"; // <- .js important!
+import { loadCachedShayaris } from "./lib/eknazariyaScraper.js"; // Use `.js` for Vercel compatibility
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
 let shayariCache: any[] = [];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -12,42 +13,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { mood = "", theme = "", depth = 5 } = req.body;
 
-  try {
-    if (shayariCache.length === 0) {
+  // Cold start cache
+  if (shayariCache.length === 0) {
+    try {
       console.log("🔄 Preloading shayari from eknazariya...");
       shayariCache = await loadCachedShayaris();
       console.log(`✅ Cached ${shayariCache.length} shayaris`);
+    } catch (err) {
+      console.error("❌ Failed to load shayari cache", err);
     }
+  }
 
-    const matches = shayariCache.filter(
-      (s) => s.mood?.includes(mood) && s.theme?.includes(theme)
-    );
+  // Normalize utility
+  const normalize = (str: string) => str.toLowerCase().trim();
 
-    if (matches.length > 0) {
-      const selected = matches[Math.floor(Math.random() * matches.length)];
-      return res.status(200).json({
-        lines: selected.lines,
-        source: "eknazariya.com"
-      });
-    }
+  // Try to find match in cache
+  const matches = shayariCache.filter((s) => {
+    const moodMatch = normalize(s.mood).includes(normalize(mood));
+    const themeMatch = normalize(s.theme).includes(normalize(theme));
+    return moodMatch && themeMatch;
+  });
 
-    // fallback to OpenAI
-    const prompt = `एक ${mood || "भावुक"} और ${theme || "प्रेम"} विषय पर आधारित ${depth > 7 ? "गहरी" : "सरल"} हिंदी शायरी बताओ।`;
+  console.log("🔍 Matching for:", mood, theme);
+  console.log("📦 Total cached:", shayariCache.length);
+  console.log("🔎 Matched from cache:", matches.length);
 
+  if (matches.length > 0) {
+    const lines = matches[Math.floor(Math.random() * matches.length)].lines;
+    return res.status(200).json({ lines, source: "eknazariya.com" });
+  }
+
+  // Fallback to OpenAI
+  const prompt = `एक ${mood || "भावुक"} और ${theme || "प्रेम"} विषय पर आधारित ${
+    depth > 7 ? "गहरी" : "सरल"
+  } हिंदी शायरी बताओ।`;
+
+  try {
     const result = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         { role: "system", content: "तुम एक भावुक उर्दू-हिंदी शायर हो। केवल शायरी दो।" },
-        { role: "user", content: prompt }
-      ]
+        { role: "user", content: prompt },
+      ],
     });
 
-    const text = result.choices[0]?.message?.content || "";
-    const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
+    const text = result.choices[0].message.content || "";
+    const lines = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
 
     return res.status(200).json({ lines, source: "OpenAI" });
   } catch (err: any) {
-    console.error("❌ Error in handler", err);
+    console.error("❌ OpenAI error", err);
     return res.status(500).json({ error: err.message || "Failed to generate shayari." });
   }
 }

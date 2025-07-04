@@ -1,15 +1,15 @@
-import React, { useState, useCallback } from "react";
-import PromptControls from "./components/PromptControls";
-import ShayariDisplay from "./components/ShayariDisplay";
+import React, { useCallback, useState } from "react";
+import PromptControls from "./PromptControls";
+import ShayariDisplay from "./ShayariDisplay";
 
-export default function App() {
-  const [mood, setMood] = useState<string>("");
-  const [theme, setTheme] = useState<string>("");
-  const [depth, setDepth] = useState<number>(5);
-  const [shayari, setShayari] = useState<string>("");
-  const [source, setSource] = useState<string>("");
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+const App: React.FC = () => {
+  const [shayari, setShayari] = useState("");
+  const [source, setSource] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [mood, setMood] = useState("गहराई");
+  const [theme, setTheme] = useState("ग़ालिब");
+  const [depth, setDepth] = useState(5);
+  const [isLoading, setIsLoading] = useState(false);
 
   const generateShayari = useCallback(async () => {
     setIsLoading(true);
@@ -31,11 +31,11 @@ export default function App() {
 
       const data = await response.json();
 
-      if (typeof data.response !== "string") {
+      if (!Array.isArray(data.lines)) {
         throw new Error("Invalid response format from API");
       }
 
-      setShayari(data.response);
+      setShayari(data.lines.join("\n"));
       setSource(data.source || "");
     } catch (err: any) {
       console.error("Error generating Shayari:", err);
@@ -47,45 +47,31 @@ export default function App() {
   }, [mood, theme, depth]);
 
   return (
-    <div className="flex flex-col min-h-screen w-full">
-      {/* TOP RIGHT CORNER BRANDING */}
-      <div className="fixed top-4 right-4 text-right text-white z-20">
-        <h1 className="text-3xl font-bold drop-shadow-lg text-blue-300">साहिल</h1>
-        <p className="text-base drop-shadow text-gray-300">जज़्बातों की आवाज़</p>
+    <div className="min-h-screen bg-black text-white p-6 font-serif">
+      <div className="max-w-2xl mx-auto space-y-4">
+        <h1 className="text-3xl font-bold text-center">अपनी शायरी चुनें</h1>
+        <PromptControls
+          mood={mood}
+          theme={theme}
+          depth={depth}
+          setMood={setMood}
+          setTheme={setTheme}
+          setDepth={setDepth}
+        />
+        <button
+          onClick={generateShayari}
+          disabled={isLoading}
+          className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg w-full"
+        >
+          {isLoading ? "कृपया प्रतीक्षा करें..." : "शायरी दिखाओ"}
+        </button>
+        <ShayariDisplay text={shayari} source={source} error={error} />
+        <footer className="text-center text-sm opacity-50 pt-10">
+          © 2025 Sahil - जज़्बातों की आवाज़. All rights reserved.
+        </footer>
       </div>
-
-      {/* MAIN CONTENT */}
-      <main className="flex flex-1 items-center justify-center px-4 py-8">
-        <div className="bg-dark-glass w-full">
-          {error && (
-            <div className="bg-red-700 text-white p-3 rounded-md mb-4 text-center">
-              {error}
-            </div>
-          )}
-
-          <PromptControls
-            mood={mood}
-            setMood={setMood}
-            theme={theme}
-            setTheme={setTheme}
-            depth={depth}
-            setDepth={setDepth}
-            onGenerate={generateShayari}
-            isLoading={isLoading}
-          />
-
-          <ShayariDisplay
-            shayari={shayari}
-            isLoading={isLoading}
-            source={source}
-          />
-        </div>
-      </main>
-
-      {/* FOOTER */}
-      <footer className="text-center text-sm text-gray-500 py-4">
-        &copy; {new Date().getFullYear()} Sahil - जज़्बातों की आवाज़. All rights reserved.
-      </footer>
     </div>
   );
-}
+};
+
+export default App;
