@@ -25,18 +25,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // Normalize and tokenize mood + theme
+  // Tokenize input for flexible matching
   const tokens = (mood + " " + theme).toLowerCase().split(/\s+/).filter(Boolean);
 
+  // Match against shayari content directly
   const matches = shayariCache.filter((entry) => {
-    const lines = Array.isArray(entry.lines)
-      ? entry.lines.join(" ")
+    const fullText = Array.isArray(entry.lines)
+      ? entry.lines.join(" ").toLowerCase()
       : typeof entry === "string"
-      ? entry
+      ? entry.toLowerCase()
       : "";
 
-    const fullText = lines.toLowerCase();
-    return tokens.every(token => fullText.includes(token));
+    return tokens.some((token) => fullText.includes(token));
   });
 
   console.log("🔍 Matching for:", mood, theme);
