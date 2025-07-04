@@ -1,153 +1,85 @@
 import express from "express";
 import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
-import fetch from "node-fetch";
-import * as cheerio from "cheerio";
+import cors from "cors";
 import { OpenAI } from "openai";
+import { scrapeShayarisFromBlog } from "./src/eknazariyaScraper";
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
+app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "dist")));
-app.use("/assets", express.static(path.join(__dirname, "public/assets")));
 
-const sourceUrls: string[] = [
-  "https://eknazariya.com/",
-  "https://eknazariya.com/ishq-shayari",
-  "https://eknazariya.com/shayari-sangrah",
-  "https://eknazariya.com/virah-shayari-1",
-  "https://eknazariya.com/ghalib-shayari",
-  "https://eknazariya.com/bashir-badr-shayari-1",
-  "https://eknazariya.com/gulzar-shayari-1",
-  "https://eknazariya.com/waseem-barelvi-1",
-  "https://eknazariya.com/ahmad-faraz-1",
-  "https://eknazariya.com/javed-akhtar",
-  "https://eknazariya.com/nida-fazli-1",
-  "https://eknazariya.com/rahat-indori-4",
-  "https://eknazariya.com/rahat-indori",
-  "https://eknazariya.com/jaun-eliya",
-  "https://eknazariya.com/tahzeeb-hafi"
-];
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-let cachedShayaris: string[] = [];
+let cachedShayaris: {
+  text: string;
+  mood?: string;
+  theme?: string;
+}[] = [];
 
-function extractShayariBlocks(rawText: string): string[] {
-  return rawText
-    .split(/[-]{5,}|\n{2,}|\r\n{2,}/)
-    .map((s) => s.trim())
-    .filter((s) => s.split("\n").length >= 3 && s.length >= 40);
-}
-
-async function scrapeShayarisFromUrl(url: string): Promise<string[]> {
-  try {
-    const res = await fetch(url);
-    const html = await res.text();
-    const $ = cheerio.load(html);
-
-    let rawText = "";
-    const containers = $(".elementor-widget-container");
-
-    if (containers.length > 0) {
-      containers.each((_, el) => {
-        const text = $(el).text().trim();
-        if (text.length >= 30) rawText += text + "\n\n";
-      });
-    } else {
-      $("div").each((_, el) => {
-        const text = $(el).text().trim();
-        if (text.includes("!!")) rawText += text + "\n\n";
-      });
-    }
-
-    const blocks = extractShayariBlocks(rawText);
-    console.log(`🔍 Scraped ${blocks.length} Shayaris from: ${url}`);
-    return blocks;
-  } catch (err) {
-    console.error(`❌ Error scraping ${url}:`, err);
-    return [];
-  }
-}
-
-// Load Shayari from all pages at server start
+console.log("🔄 Preloading Shayari from eknazariya...");
 (async () => {
-  console.log("🔄 Preloading Shayari from eknazariya...");
-  const all = await Promise.all(sourceUrls.map(scrapeShayarisFromUrl));
-  cachedShayaris = all.flat();
-  console.log(`✅ Cached ${cachedShayaris.length} Shayaris from blog.`);
+  try {
+    cachedShayaris = await scrapeShayarisFromBlog();
+    console.log(`✅ Cached ${cachedShayaris.length} Shayaris from blog.`);
+  } catch (err) {
+    console.error("❌ Failed to preload shayaris:", err);
+  }
 })();
 
-// Fallback live search if not found in cache
-async function searchEknazariyaLive(mood: string, theme: string): Promise<string | null> {
-  const query = `${mood} ${theme}`.trim();
-  const url = `https://eknazariya.com/?s=${encodeURIComponent(query)}`;
-  try {
-    const res = await fetch(url);
-    const html = await res.text();
-    const $ = cheerio.load(html);
-    const firstLink = $(".entry-title a").first().attr("href");
-
-    if (firstLink) {
-      const postRes = await fetch(firstLink);
-      const postHtml = await postRes.text();
-      const $$ = cheerio.load(postHtml);
-      const text = $$("blockquote").first().text().trim() || $$("p").first().text().trim();
-      if (text.length >= 30) return text;
-    }
-  } catch (e) {
-    console.error("❌ Live scrape failed:", e);
-  }
-  return null;
-}
-
-// API handler
 app.post("/api/generate", async (req, res) => {
   const { mood, theme, depth } = req.body;
   console.log(`📩 API called with mood: ${mood}, theme: ${theme}, depth: ${depth}`);
 
+  // Scrape on-demand if cache is empty (Vercel-safe)
+  if (cachedShayaris.length === 0) {
+    console.log("⏳ Scraping shayaris on first request...");
+    try {
+      cachedShayaris = await scrapeShayarisFromBlog();
+      console.log(`✅ Scraped and cached ${cachedShayaris.length} shayaris`);
+    } catch (e) {
+      console.error("❌ Scraper failed:", e);
+    }
+  }
+
+  // Try to match from cache
+  const match = cachedShayaris.find(
+    (s) =>
+      (s.mood || "").includes(mood) &&
+      (s.theme || "").includes(theme)
+  );
+
+  if (match) {
+    console.log("📦 Matched from cache (mood + theme)");
+    return res.json({ response: match.text, source: "eknazariya" });
+  }
+
+  // Fallback to OpenAI
+  const prompt = `एक ${mood || "भावुक"} और ${theme || "प्रेम"} विषय पर आधारित ${
+    depth > 7 ? "गहरी" : "सरल"
+  } हिंदी शायरी बताओ।`;
+
   try {
-    // Try cache match
-    const bothMatch = cachedShayaris.find(
-      (s) => s.includes(mood) && s.includes(theme)
-    );
-    if (bothMatch) {
-      console.log("📦 Matched from cache (mood + theme)");
-      return res.json({ response: bothMatch, source: "eknazariya" });
-    }
-
-    // Try live search
-    const liveResult = await searchEknazariyaLive(mood, theme);
-    if (liveResult) {
-      console.log("🔍 Found via live scrape");
-      return res.json({ response: liveResult, source: "eknazariya" });
-    }
-
-    // Fallback to OpenAI
-    const messages = [
-      { role: "system", content: "You are a poetic Hindi Shayari writer." },
-      { role: "user", content: `Write a Shayari about ${mood} and ${theme} with depth ${depth}/10.` }
-    ];
-
-    const completion = await openai.chat.completions.create({
+    const result = await openai.chat.completions.create({
       model: "gpt-4o",
-      messages,
-      temperature: 0.9
+      messages: [
+        { role: "system", content: "तुम एक भावुक उर्दू-हिंदी शायर हो। केवल शायरी दो।" },
+        { role: "user", content: prompt },
+      ],
     });
 
-    const output = completion.choices[0]?.message.content;
-    console.log("🧠 Served via OpenAI");
-    res.json({ response: output, source: "openai" });
-  } catch (err) {
-    console.error("❌ Generation error:", err);
-    res.status(500).json({ error: "शायरी बनाने में समस्या हुई।" });
+    const text = result.choices[0].message.content || "";
+
+    return res.json({
+      response: text.trim(),
+      source: "openai",
+    });
+  } catch (err: any) {
+    console.error("❌ OpenAI error:", err.message);
+    return res.status(500).json({ error: "OpenAI failed", response: "", source: "none" });
   }
 });
 
